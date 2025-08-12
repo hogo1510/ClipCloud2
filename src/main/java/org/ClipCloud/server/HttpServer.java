@@ -1,5 +1,8 @@
 package org.ClipCloud.server;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
@@ -55,7 +58,7 @@ public class HttpServer {
                 System.out.println("Ontvangen van PHP: " + requestData); // Log naar console
 
                 // Stuur een response terug
-                String response = "het is ontvangen!";
+                String response = "het is ontvangen! \n Link: ";
                 exchange.sendResponseHeaders(200, response.length());
                 try (OutputStream os = exchange.getResponseBody()) {
                     os.write(response.getBytes());
@@ -90,22 +93,53 @@ public class HttpServer {
     }
 
 
-    static class GetHandler implements HttpHandler{
+    static class GetHandler implements HttpHandler {
         @Override
-        public void handle(HttpExchange exchange) throws IOException{
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                // 1. Lees bestand
+                String fileName = "test";
+                String fileContent = getData(fileName);
 
-            //info opvragen
-            String fileName = FilePath+"test"; // Zonder .json extensie
-            String fileContent = getData(fileName);
+                // 2. Valideer en corrigeer content
+                if (fileContent == null || fileContent.trim().isEmpty()) {
+                    fileContent = "[]"; // Standaard lege array
+                } else {
+                    // Verwijder mogelijk BOM of extra karakters
+                    fileContent = fileContent.trim();
 
-            if (fileContent != null) {
-                System.out.println("Inhoud van het bestand:");
-                System.out.println(fileContent);
-            } else {
-                System.out.println("Kon het bestand niet lezen.");
+                    // Zorg dat het met [ begint en eindigt met ]
+                    if (!fileContent.startsWith("[")) {
+                        fileContent = "[" + fileContent + "]";
+                    }
+                }
+
+                // 3. Valideer JSON
+                try {
+                    JsonParser.parseString(fileContent);
+                } catch (JsonSyntaxException e) {
+                    System.err.println("Ongeldige JSON gevonden, reset naar lege array");
+                    fileContent = "[]";
+                }
+
+                // 4. Stuur response
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+
+                byte[] responseBytes = fileContent.getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, responseBytes.length);
+
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(responseBytes);
+                }
+
+            } catch (Exception e) {
+                String error = "{\"error\":\"Server error\"}";
+                exchange.sendResponseHeaders(500, error.length());
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(error.getBytes());
+                }
             }
         }
-
     }
-
 }

@@ -115,6 +115,39 @@
             color: #721c24;
             opacity: 1;
         }
+
+        /* Nieuwe styling voor volgende pagina knop */
+        .next-page-container {
+            margin-top: 20px;
+            text-align: center;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .next-page-button {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .next-page-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            text-decoration: none;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -122,6 +155,7 @@
     <h1>Deel je gedachten</h1>
 
     <?php
+    $showNextButton = false;
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = $_POST['message'] ?? '';
 
@@ -142,7 +176,7 @@
 
             if ($result !== false) {
                 echo '<div class="post-feedback success">Bericht succesvol naar Java-server gestuurd: '.htmlspecialchars($result).'</div>';
-                
+                $showNextButton = true;
             } else {
                 echo '<div class="post-feedback error">Fout: Java-server niet bereikbaar</div>';
             }
@@ -158,8 +192,14 @@
             <div class="counter"><span id="charCount">0</span>/500</div>
         </div>
 
-        <button type="submit" class="post-button" id="postButton">Deel bericht</button>
+        <button type="submit" class="post-button" id="postButton">Plaats bericht</button>
     </form>
+
+    <?php if ($showNextButton): ?>
+        <div class="next-page-container">
+            <a href="succes.php" class="next-page-button" id="nextButton">Naar bericht →</a>
+        </div>
+    <?php endif; ?>
 </div>
 
 <script>
@@ -183,6 +223,11 @@
     if (messageInput.value.length > 500) {
         charCount.style.color = 'red';
     }
+
+    // Toon volgende knop na succes (voor als PHP uitgeschakeld is)
+    <?php if ($showNextButton): ?>
+        document.getElementById('nextButton').style.display = 'inline-block';
+    <?php endif; ?>
 </script>
 </body>
 </html>
