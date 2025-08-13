@@ -1,41 +1,71 @@
 <?php
-// Ontvang de verstuurde data
-$receivedMessage = $_GET['message'] ?? '';
-$serverResponse = $_GET['response'] ?? '';
+// Functie om HTTP requests te maken
+function makeHttpRequest($url, $method = 'GET', $data = null, $headers = []) {
+    $options = [
+        'http' => [
+            'method' => $method,
+            'ignore_errors' => true
+        ]
+    ];
 
-// Haal berichten op van de Java backend
-$messagesUrl = 'http://localhost:8000/get';
-$options = [
-    'http' => [
-        'method' => 'GET',
-        'header' => 'Accept: application/json'
-    ]
-];
+    if ($data !== null) {
+        $options['http']['content'] = $data;
+    }
 
-$context = stream_context_create($options);
-$messagesResponse = @file_get_contents($messagesUrl, false, $context);
-if ($messagesResponse === false) {
-    die("Fout bij ophalen berichten: " . error_get_last()['message']);
+    if (!empty($headers)) {
+        $options['http']['header'] = implode("\r\n", $headers);
+    }
+
+    $context = stream_context_create($options);
+    $response = file_get_contents($url, false, $context);
+
+    return [
+        'content' => $response,
+        'status' => $http_response_header[0] ?? null
+    ];
 }
 
-// Debug output
-echo "<!-- Raw response: " . htmlspecialchars($messagesResponse) . " -->";
-$messages = json_decode($messagesResponse, true);
+// Verwerk formulier submission
+$receivedMessage = $_POST['message'] ?? '';
+$serverResponse = '';
+$messages = [];
 
-if (json_last_error() !== JSON_ERROR_NONE) {
-    die("JSON parse error: " . json_last_error_msg());
+if (!empty($receivedMessage)) {
+    // Verstuur bericht naar Java backend
+    $postResponse = makeHttpRequest(
+        'http://localhost:8000/post',
+        'POST',
+        $receivedMessage,
+        ['Content-Type: text/plain']
+    );
+
+    $serverResponse = $postResponse['content'];
 }
 
-// Debug de ontvangen berichten
-echo "<!-- Parsed messages: ";
-var_dump($messages);
-echo " -->";
+// Haal alle berichten op van Java backend
+$getResponse = makeHttpRequest(
+    'http://localhost:8000/get',
+    'GET',
+    null,
+    ['Accept: application/json']
+);
 
-// Genereer QR code data
+if ($getResponse['content'] !== false) {
+    $messages = json_decode($getResponse['content'], true) ?? [];
+
+    // Debug output
+    echo "<!--\n";
+    echo "GET Response Status: " . htmlspecialchars($getResponse['status']) . "\n";
+    echo "GET Response Content: " . htmlspecialchars($getResponse['content']) . "\n";
+    echo "Decoded Messages: " . print_r($messages, true) . "\n";
+    echo "-->\n";
+}
+
+// Genereer QR code
 $qrData = urlencode($receivedMessage);
 $qrCodeUrl = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" . $qrData;
 
-// Genereer deelbare link
+// Genereer deelbare link - HIER WAS DE FOUT
 $shareableLink = (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
 ?>
 <!DOCTYPE html>
@@ -141,6 +171,12 @@ $shareableLink = (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HT
         .copy-button:hover {
             background: #5a6268;
         }
+        .error-box {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
@@ -159,6 +195,13 @@ $shareableLink = (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HT
             <div class="response-box">
                 <strong>Server antwoord:</strong>
                 <p><?php echo htmlspecialchars($serverResponse); ?></p>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($getResponse['content'] === false): ?>
+            <div class="error-box">
+                <strong>Fout bij ophalen berichten:</strong>
+                <p><?php echo htmlspecialchars($getResponse['status'] ?? 'Onbekende fout'); ?></p>
             </div>
             <?php endif; ?>
         </div>
@@ -184,17 +227,20 @@ $shareableLink = (isset($_SERVER['HTTPS']) ? "https" : "http") . "://$_SERVER[HT
                 <?php endforeach; ?>
             </div>
         </div>
+        <?php elseif ($getResponse['content'] !== false): ?>
+        <div class="section">
+            <p>Er zijn nog geen berichten beschikbaar.</p>
+        </div>
         <?php endif; ?>
 
         <div class="button-group">
-            <button class="action-button" onclick="window.location.href='index.php'">Nieuw Bericht</button>
+            <a href="index.php" class="action-button">Nieuw Bericht</a>
             <button class="action-button" onclick="window.location.reload()">Verversen</button>
         </div>
     </div>
 
     <script>
-        // Voeg hier eventuele JavaScript toe voor betere gebruikersinteractie
-        document.querySelector('.copy-button').addEventListener('click', function() {
+        document.querySelector('.copy-button')?.addEventListener('click', function() {
             const originalText = this.textContent;
             this.textContent = 'Gekopieerd!';
             setTimeout(() => {

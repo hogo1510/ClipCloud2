@@ -1,8 +1,6 @@
 package org.ClipCloud.server;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonSyntaxException;
+import com.google.gson.*;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
@@ -47,28 +45,60 @@ public class HttpServer {
             os.close();
         }
     }
-    static class PostHandler implements HttpHandler{
+    static class PostHandler implements HttpHandler {
+        private static final Gson gson = new Gson();
+
         @Override
-        public void handle(HttpExchange exchange) throws IOException{
-            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                // Lees de request body (data van PHP)
-                InputStream requestBody = exchange.getRequestBody();
-                String requestData = new String(requestBody.readAllBytes(), StandardCharsets.UTF_8);
+        public void handle(HttpExchange exchange) throws IOException {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                try {
+                    // Lees de binnenkomende data
+                    String requestData = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                    System.out.println("Ontvangen data: " + requestData);
 
-                System.out.println("Ontvangen van PHP: " + requestData); // Log naar console
+                    // Maak een nieuw bericht object
+                    JsonObject newMessage = new JsonObject();
+                    newMessage.addProperty("content", requestData);
+                    newMessage.addProperty("timestamp", System.currentTimeMillis() / 1000);
 
-                // Stuur een response terug
-                String response = "het is ontvangen! \n Link: ";
-                exchange.sendResponseHeaders(200, response.length());
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(response.getBytes());
+                    // Lees bestaande berichten of maak nieuwe array
+                    JsonArray messages;
+                    String existingData = getData("test");
+                    if (existingData == null || existingData.trim().isEmpty()) {
+                        messages = new JsonArray();
+                    } else {
+                        try {
+                            messages = gson.fromJson(existingData, JsonArray.class);
+                        } catch (JsonSyntaxException e) {
+                            System.out.println("Ongeldige JSON, nieuwe array aangemaakt");
+                            messages = new JsonArray();
+                        }
+                    }
+
+                    // Voeg nieuw bericht toe
+                    messages.add(newMessage);
+
+                    // Sla op als JSON
+                    String jsonToSave = gson.toJson(messages);
+                    Save2File.save(jsonToSave);
+
+                    // Stuur response terug naar PHP
+                    String response = "{\"status\":\"success\",\"message\":\"Bericht ontvangen\"}";
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, response.getBytes().length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(response.getBytes());
+                    }
+
+                } catch (Exception e) {
+                    String error = "{\"error\":\"" + e.getMessage() + "\"}";
+                    exchange.sendResponseHeaders(500, error.getBytes().length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(error.getBytes());
+                    }
                 }
-
-                //sla op in json
-                Save2File.save(requestData);
-
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                exchange.sendResponseHeaders(405, -1); // Method not allowed
             }
         }
     }
@@ -78,7 +108,7 @@ public class HttpServer {
     public static String getData(String fileName) {
         StringBuilder data = new StringBuilder();
         try {
-            File myObj = new File(FilePath+fileName+".txt");
+            File myObj = new File(FilePath+fileName);
             Scanner myReader = new Scanner(myObj);
             while (myReader.hasNextLine()) {
                 data.append(myReader.nextLine()).append("\n"); // Voeg elke regel toe aan de StringBuilder
@@ -98,7 +128,7 @@ public class HttpServer {
         public void handle(HttpExchange exchange) throws IOException {
             try {
                 // 1. Lees bestand
-                String fileName = "test";
+                String fileName = Save2File.getFilename();
                 String fileContent = getData(fileName);
 
                 // 2. Valideer en corrigeer content
